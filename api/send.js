@@ -3,7 +3,7 @@ const cors = require('cors');
 
 // Initialize CORS middleware
 const corsMiddleware = cors({
-  origin: process.env.ALLOWED_ORIGIN || '*',
+  origin: process.env.ALLOWED_ORIGIN,
   methods: ['POST', 'OPTIONS'],
 });
 
