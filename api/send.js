@@ -20,44 +20,62 @@ function runMiddleware(req, res, fn) {
   });
 }
 
+// Create transporter once (better performance)
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: process.env.SMTP_PORT,
+  secure: process.env.SMTP_PORT == 465,
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
 export default async function handler(req, res) {
   // Run CORS middleware
   await runMiddleware(req, res, corsMiddleware);
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const { email, content, subject } = req.body;
+  const { email, content, subject, htmlContent, replyTo } = req.body;
 
-  if (!email || !content) {
-    return res.status(400).json({ message: 'Missing required fields: email and/or content' });
+  if (!email || (!content && !htmlContent)) {
+    return res.status(400).json({
+      message: 'Missing required fields: email and/or content/htmlContent',
+    });
   }
 
   try {
-    // Create reusable transporter object using the default SMTP transport
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT,
-      secure: process.env.SMTP_PORT == 465, // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
-
-    // Send mail with defined transport object
     const info = await transporter.sendMail({
-      from: `"No Reply" <${process.env.SMTP_USER}>`, // sender address
-      to: email, // list of receivers
-      subject: subject || 'New Message', // Subject line
-      text: content, // plain text body
-      html: `<p>${content.replace(/\n/g, '<br>')}</p>`, // html body (simple formatting)
+      from: `"No Reply" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: subject || 'New Message',
+      text:
+        content ||
+        'Please view this email in an HTML compatible client.',
+      html:
+        htmlContent ||
+        (content
+          ? `<p>${content.replace(/\n/g, '<br>')}</p>`
+          : ''),
+      ...(replyTo && { replyTo }), // reply-to support
     });
 
-    res.status(200).json({ message: 'Email sent successfully', messageId: info.messageId });
+    res.status(200).json({
+      message: 'Email sent successfully',
+      messageId: info.messageId,
+    });
   } catch (error) {
     console.error('Error sending email:', error);
-    res.status(500).json({ message: 'Failed to send email', error: error.message });
+    res.status(500).json({
+      message: 'Failed to send email',
+      error: error.message,
+    });
   }
 }
