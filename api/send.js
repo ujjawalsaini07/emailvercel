@@ -1,9 +1,21 @@
 const nodemailer = require('nodemailer');
 const cors = require('cors');
+// CORS
+const AllowedOrigins = process.env.ALLOWED_ORIGINS
+  .split(",")
+  .map(origin => origin.trim());
 
-// Initialize CORS middleware
 const corsMiddleware = cors({
-  origin: process.env.ALLOWED_ORIGIN,
+  origin: function (origin, callback) {
+    // allow requests with no origin (Postman, server-to-server)
+    if (!origin) return callback(null, true);
+
+    if (AllowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Not allowed by CORS"));
+  },
   methods: ['POST', 'OPTIONS'],
 });
 
