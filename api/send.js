@@ -1,14 +1,18 @@
 const nodemailer = require('nodemailer');
 const cors = require('cors');
 // CORS
-const AllowedOrigins = process.env.ALLOWED_ORIGINS
+const allowedOriginsEnv = process.env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGIN || ''
+const AllowedOrigins = allowedOriginsEnv
   .split(",")
-  .map(origin => origin.trim());
+  .map(origin => origin.trim())
+  .filter(Boolean);
 
 const corsMiddleware = cors({
   origin: function (origin, callback) {
     // allow requests with no origin (Postman, server-to-server)
     if (!origin) return callback(null, true);
+    // If env is not configured, allow all origins instead of crashing the function.
+    if (AllowedOrigins.length === 0) return callback(null, true);
 
     if (AllowedOrigins.includes(origin)) {
       return callback(null, true);
@@ -32,6 +36,18 @@ function runMiddleware(req, res, fn) {
   });
 }
 
+function parseBody(req) {
+  if (req.body && typeof req.body === 'object') return req.body;
+  if (typeof req.body === 'string') {
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 // Create transporter once (better performance)
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -44,8 +60,15 @@ const transporter = nodemailer.createTransport({
 });
 
 export default async function handler(req, res) {
-  // Run CORS middleware
-  await runMiddleware(req, res, corsMiddleware);
+  try {
+    // Run CORS middleware
+    await runMiddleware(req, res, corsMiddleware);
+  } catch (error) {
+    return res.status(403).json({
+      message: 'CORS rejected request',
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -55,7 +78,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
 
-  const { email, content, subject, htmlContent, replyTo } = req.body;
+  const { email, content, subject, htmlContent, replyTo } = parseBody(req);
 
   if (!email || (!content && !htmlContent)) {
     return res.status(400).json({
